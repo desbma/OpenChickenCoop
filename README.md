@@ -11,7 +11,8 @@ make fake_ambient
 # make audio profile
 make
 cd ..
-./occ.py ...
+# run ./occ -h to get command line usage help
+./occ.py -a alsa:hw:2 -s v4l2:/dev/video0 -v debug
 ```
 
 ### Requirements
@@ -24,4 +25,6 @@ cd ..
 
 * tests
 * systemd service
+* video filters
+* audio filters
 * AUR package
