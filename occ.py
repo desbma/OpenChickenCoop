@@ -70,12 +70,15 @@ if __name__ == "__main__":
 
   # build ffmpeg command line
   # TODO don't hardcode input channel count
+  # TODO optional hqdn3d filter
+  # TODO tune audio silence threshold
   cmd = ["ffmpeg", "-hide_banner", "-y",
          "-re",
          "-f", args.video_source[0], "-i", args.video_source[1],
          "-f", args.audio_source[0], "-ac", "1", "-i", args.audio_source[1],
-         "-map", "0:v", "-c:v", "libxvid", "-qscale:v", "4",
-         "-map", "1:a", "-c:a", "libfdk_aac", "-q:a", "4",
+         "-filter_complex", "[0:v]format=yuv420p[video]; [1:a]silencedetect=noise=-10dB[audio]",
+         "-map", "[video]", "-c:v", "libxvid", "-qscale:v", "4",
+         "-map", "[audio]", "-c:a", "libfdk_aac", "-q:a", "4",
          "-muxdelay", "0.1",
          "-f", "mpegts", "udp://localhost:1234"]
   logging.getLogger().debug(f"Running FFmpeg: {subprocess.list2cmdline(cmd)}")
