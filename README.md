@@ -1,5 +1,10 @@
 # Open Chicken Coop
 
+## General status
+
+* streams video + audio over UDP
+* very basic silence/noise detection
+
 ## `spawn_detect`
 
 ### Usage
@@ -27,4 +32,5 @@ cd ..
 * systemd service
 * video filters
 * audio filters
+* improve streaming
 * AUR package
