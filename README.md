@@ -17,9 +17,9 @@ cd ..
 
 ### Requirements
 
-* python3
-* sox
-* ffmpeg
+* [Python 3](https://www.python.org/)
+* [SoX](http://sox.sourceforge.net/)
+* [FFmpeg](https://www.ffmpeg.org/), compiled with libfdk_aac, see [here](https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu) for Ubuntu
 
 ### TODO
 
