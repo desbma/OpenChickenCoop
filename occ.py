@@ -3,18 +3,22 @@
 """ Open Chicken Coop. """
 
 import argparse
+import inspect
 import logging
+import os
 import selectors
 import shlex
 import socketserver
 import subprocess
 import sys
+import tempfile
 import threading
 
 import colored_logging
 
 
-LOCAL_UDP_PORT = 10001
+LOCAL_UDP_PORT_VIDEO = 10001
+LOCAL_UDP_PORT_AUDIO = 10011
 STREAMING_SERVER_PORT = 11000
 
 
@@ -132,10 +136,11 @@ class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
 
     logger.info(f"Got request from {self.client_address}")
     stream_cmd = ["ffmpeg", "-loglevel", "quiet",
-                  "-f", "mpegts", "-i", f"udp://127.0.0.1:{LOCAL_UDP_PORT}",
-                  "-map", "v", "-c:v", "copy",
-                  "-map", "a", "-c:a", "copy",
-                  "-f", "mpegts", "-"]
+                  "-protocol_whitelist", "file,rtp,udp",
+                  "-i", self.server.sdp_filepath,
+                  "-map", "v", "-map", "a",
+                  "-c:v", "copy", "-c:a", "copy",
+                  "-f", "matroska", "-"]
     logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
     subprocess.run(stream_cmd,
                    stdout=self.wfile,  # connect stdout to TCP socket
@@ -149,7 +154,8 @@ class StreamingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
   allow_reuse_address = True
 
-  def __init__(self):
+  def __init__(self, sdp_filepath):
+    self.sdp_filepath = sdp_filepath
     super().__init__(("0.0.0.0", STREAMING_SERVER_PORT), StreamingServerRequestHandler)
 
 
@@ -165,7 +171,7 @@ class StreamingServerThread(threading.Thread):
     super().__init__(daemon=True, name=__class__.__name__)
 
   def run(self):
-    self.logger.info(f"TCP server started, serving on port {STREAMING_SERVER_PORT}, connect to it with 'ffplay -f mpegts tcp://IP:{STREAMING_SERVER_PORT}'")
+    self.logger.info(f"TCP server started, serving on port {STREAMING_SERVER_PORT}, connect to it with 'ffplay tcp://IP:{STREAMING_SERVER_PORT}'")
 
     self.server.serve_forever()
 
@@ -214,42 +220,41 @@ if __name__ == "__main__":
   logging_handler.setFormatter(logging_formatter)
   logging.getLogger().addHandler(logging_handler)
 
-  # ffmpeg capture
-  # TODO don't hardcode audio input parameters (ie. channel count)
-  # TODO don't hardcode video input parameters (ie. res, fps...)
-  # TODO don't hardcode audio encoding parameters
-  # TODO don't hardcode video encoding parameters
-  # TODO optional hqdn3d filter
-  # TODO capture to 2 rtp streams (with 2 dsp files) without transcoding + remux on tcp server to get rid of mpegts constraints?
-  logger = logging.getLogger("capture")
-  capture_cmd = ["ffmpeg", "-loglevel", "quiet",
-                 "-re",
-                 "-f", args.video_source[0], "-i", args.video_source[1],
-                 "-f", args.audio_source[0], "-ac", "1", "-i", args.audio_source[1],
-                 "-map", "0:v", "-c:v", "libxvid", "-qscale:v", "4",
-                 "-map", "1:a", "-c:a", "libfdk_aac", "-q:a", "4",
-                 "-muxdelay", "0.1",
-                 "-f", "mpegts", f"udp://127.0.0.1:{LOCAL_UDP_PORT}",
-                 "-c:a", "copy",
-                 "-f", "wav", "-"]
-  logger.info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
-  capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-  assert(capture_process.poll() is None)
+  with tempfile.TemporaryDirectory(prefix="%s_" % (os.path.splitext(os.path.basename(inspect.getfile(inspect.currentframe())))[0])) as tmp_dir:
+    # ffmpeg capture
+    # TODO don't hardcode audio input parameters (ie. channel count)
+    # TODO don't hardcode video input parameters (ie. res, fps...)
+    # TODO don't hardcode audio encoding parameters
+    # TODO don't hardcode video encoding parameters
+    # TODO optional hqdn3d filter
+    logger = logging.getLogger("capture")
+    sdp_filepath = os.path.join(tmp_dir, "av.sdp")
+    capture_cmd = ["ffmpeg", "-loglevel", "quiet",
+                   "-re",
+                   "-f", args.video_source[0], "-input_format", "mjpeg", "-i", args.video_source[1],
+                   "-f", args.audio_source[0], "-ac", "1", "-i", args.audio_source[1],
+                   "-sdp_file", sdp_filepath,
+                   "-map", "0:v", "-c:v", "libxvid", "-qscale", "4", "-f", "rtp", f"rtp://127.0.0.1:{LOCAL_UDP_PORT_VIDEO}",
+                   "-map", "1:a", "-c:a", "libopus", "-b:a", "64k", "-f", "rtp", f"rtp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
+                   "-map", "1:a", "-c:a", "copy", "-f", "wav", "-"]
+    logger.info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
+    capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    assert(capture_process.poll() is None)
 
-  # streaming server thread
-  streaming_server = StreamingServer()
-  streaming_server_thread = StreamingServerThread(streaming_server)
-  streaming_server_thread.start()
+    # streaming server thread
+    streaming_server = StreamingServer(sdp_filepath)
+    streaming_server_thread = StreamingServerThread(streaming_server)
+    streaming_server_thread.start()
 
-  # noise detection thread
-  nd_thread = NoiseDetectionThread(capture_process=capture_process,
-                                   noise_name="chicken",
-                                   db_limit=-10,
-                                   profile_path="sounds/ambient_profile",
-                                   on_noise_command=args.noise_command)
-  nd_thread.start()
-  try:
-    nd_thread.join()
-  except KeyboardInterrupt:
-    logger.warning("Catched SIGINT, existing")
-    pass
+    # noise detection thread
+    nd_thread = NoiseDetectionThread(capture_process=capture_process,
+                                     noise_name="chicken",
+                                     db_limit=-10,
+                                     profile_path="sounds/ambient_profile",
+                                     on_noise_command=args.noise_command)
+    nd_thread.start()
+    try:
+      nd_thread.join()
+    except KeyboardInterrupt:
+      logger.warning("Catched SIGINT, existing")
+      pass

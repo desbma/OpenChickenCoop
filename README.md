@@ -24,21 +24,16 @@ cd ..
 
 Sample output:
 ```
-2018-06-10 14:10:01,104 INFO [capture] Running FFmpeg capture process with: ffmpeg -hide_banner -loglevel quiet -re -f v4l2 -i /dev/video0 -f alsa -ac 1 -i sysdefault:CARD=C615 -map 0:v -c:v libxvid -qscale:v 4 -map 1:a -c:a libfdk_aac -q:a 4 -muxdelay 0.1 -f mpegts udp://localhost:1234 -c:a copy -f wav -
-2018-06-10 14:10:01,105 INFO [chicken noise detection] Running SoX ambient noise filtering with: sox -q -t wav - -t wav - noisered sounds/ambient_profile 0.3
-2018-06-10 14:10:01,107 INFO [chicken noise detection] Running FFmpeg chicken noise detection with: ffmpeg -hide_banner -nostats -f wav -i - -filter:a silencedetect=noise=-10dB:duration=1 -f null /dev/null
-2018-06-10 14:10:05,973 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_start: 0
-2018-06-10 14:10:05,973 INFO [chicken noise detection] silence -> chicken noise
-2018-06-10 14:10:07,028 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_end: 3.86233 | silence_duration: 3.86233
-2018-06-10 14:10:07,028 INFO [chicken noise detection] chicken noise -> silence
-2018-06-10 14:10:15,029 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_start: 3.96121
-2018-06-10 14:10:15,029 INFO [chicken noise detection] silence -> chicken noise
-2018-06-10 14:10:16,232 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_end: 13.037 | silence_duration: 9.07581
-2018-06-10 14:10:16,233 INFO [chicken noise detection] chicken noise -> silence
-2018-06-10 14:10:18,951 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_start: 13.1032
-2018-06-10 14:10:18,951 INFO [chicken noise detection] silence -> chicken noise
-2018-06-10 14:10:20,005 DEBUG [chicken noise detection] [silencedetect @ 0x555b10f32bc0] silence_end: 16.864 | silence_duration: 3.76081
-2018-06-10 14:10:20,005 INFO [chicken noise detection] chicken noise -> silence
+2018-06-10 17:03:13,062 INFO MainThread [capture] Running FFmpeg capture process with: ffmpeg -loglevel quiet -re -f v4l2 -input_format mjpeg -i /dev/video0 -f alsa -ac 1 -i sysdefault:CARD=C615 -sdp_file /tmp/occ_unu2_5z_/av.sdp -map 0:v -c:v libxvid -qscale 4 -f rtp rtp://127.0.0.1:10001 -map 1:a -c:a libopus -b:a 64k -f rtp rtp://127.0.0.1:10011 -map 1:a -c:a copy -f wav -
+2018-06-10 17:03:13,064 INFO StreamingServerThread [streaming server] TCP server started, serving on port 11000, connect to it with 'ffplay tcp://IP:11000'
+2018-06-10 17:03:13,064 INFO NoiseDetectionThread [chicken noise detection] Running SoX ambient noise filtering with: sox -q -t wav - -t wav - noisered sounds/ambient_profile 0.3
+2018-06-10 17:03:13,066 INFO NoiseDetectionThread [chicken noise detection] Running FFmpeg chicken noise detection with: ffmpeg -hide_banner -nostats -f wav -i - -filter:a silencedetect=noise=-10dB:duration=1 -f null /dev/null
+2018-06-10 17:03:17,911 DEBUG NoiseDetectionThread [chicken noise detection] [silencedetect @ 0x564812ebabc0] silence_start: 0
+2018-06-10 17:03:17,911 INFO NoiseDetectionThread [chicken noise detection] silence -> chicken noise
+2018-06-10 17:03:19,117 DEBUG NoiseDetectionThread [chicken noise detection] [silencedetect @ 0x564812ebabc0] silence_end: 3.99481 | silence_duration: 3.99481
+2018-06-10 17:03:19,117 INFO NoiseDetectionThread [chicken noise detection] chicken noise -> silence
+2018-06-10 17:03:26,549 INFO Thread-1 [streaming server] Got request from ('127.0.0.1', 54022)
+2018-06-10 17:03:26,549 INFO Thread-1 [streaming server] Running FFmpeg streaming process with: ffmpeg -loglevel quiet -protocol_whitelist file,rtp,udp -i /tmp/occ_unu2_5z_/av.sdp -map v -map a -c:v copy -c:a copy -f matroska -
 
 ```
 
@@ -46,7 +41,7 @@ Sample output:
 
 * [Python >=3.5](https://www.python.org/)
 * [SoX](http://sox.sourceforge.net/)
-* [FFmpeg](https://www.ffmpeg.org/), compiled with and `--enable-libfdk-aac` and `--enable-libxvid`.
+* [FFmpeg](https://www.ffmpeg.org/), compiled with `--enable-libxvid`.
 
 ### TODO
 
