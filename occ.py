@@ -247,6 +247,7 @@ if __name__ == "__main__":
                    "-f", args.video_source[0], "-input_format", "mjpeg", "-i", args.video_source[1],
                    "-f", args.audio_source[0], "-ar", "48k", "-ac", "1", "-i", args.audio_source[1],
                    "-sdp_file", sdp_filepath,
+                   # unfortunately, mpegts or rtp can not transport raw video reliably, so we have to transcode video early
                    "-map", "0:v", "-c:v", "libxvid", "-qscale", "4", "-f", "rtp", f"rtp://127.0.0.1:{LOCAL_UDP_PORT_VIDEO}",
                    "-map", "1:a", "-c:a", "pcm_s16le", "-f", "s16le", f"udp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
                    "-map", "1:a", "-c:a", "copy", "-f", "wav", "-"]
