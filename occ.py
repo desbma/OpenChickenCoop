@@ -5,6 +5,7 @@
 import argparse
 import logging
 import selectors
+import shlex
 import subprocess
 import sys
 import threading
@@ -32,15 +33,16 @@ def parse_video_device(s):
 
 class NoiseDetectionThread(threading.Thread):
 
-  def __init__(self, capture_process, noise_name, db_limit, profile_path, *args, **kwargs):
+  def __init__(self, capture_process, noise_name, db_limit, profile_path, on_noise_command, *args, **kwargs):
     self.capture_process = capture_process
     self.noise_name = noise_name
     self.db_limit = db_limit
     self.profile_path = profile_path
+    self.on_noise_command = shlex.split(on_noise_command) if (on_noise_command is not None) else None
 
     self.logger = logging.getLogger(f"{noise_name} noise detection")
 
-    super().__init__(*args, **kwargs)
+    super().__init__(*args, daemon=True, **kwargs)
 
   def run(self):
     try:
@@ -86,12 +88,19 @@ class NoiseDetectionThread(threading.Thread):
               self.logger.debug(pending_line.strip())
               if "silence_start" in pending_line:
                 self.logger.info(f"silence -> {self.noise_name} noise ")
+                self.noiseAction()
               elif "silence_end" in pending_line:
                 self.logger.info(f"{self.noise_name} noise -> silence")
             pending_line = ""
 
     except Exception as e:
       self.logger.error(f"{e.__class__.__qualname__}: {e}")
+
+  def noiseAction(self):
+    if self.on_noise_command is not None:
+      # TODO pass time as env var
+      self.logger.info(f"Running user command: {subprocess.list2cmdline(self.on_noise_command)}")
+      subprocess.call(self.on_noise_command, stdin=subprocess.DEVNULL)
 
   def readNonBlocking(self, file):
     r = []
@@ -123,6 +132,10 @@ if __name__ == "__main__":
                           help="""Video source device.
                                   Prefix with type ie. 'v4l2:XXX'.
                                   Identify device 'v4l2-ctl --list-formats-ext' or 'ffmpeg -f v4l2 -list_formats all -i /dev/video0'.""")
+  arg_parser.add_argument("-c",
+                          "--noise-command",
+                          default=None,
+                          help="""Command to run when chicken noise is detected.""")
   arg_parser.add_argument("-v",
                           "--verbosity",
                           choices=("warning", "normal", "debug"),
@@ -166,6 +179,9 @@ if __name__ == "__main__":
   assert(capture_process.poll() is None)
 
   # noise detection thread
-  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "sounds/ambient_profile")
+  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "sounds/ambient_profile", args.noise_command)
   nd_thread.start()
-  nd_thread.join()
+  try:
+    nd_thread.join()
+  except KeyboardInterrupt:
+    pass
