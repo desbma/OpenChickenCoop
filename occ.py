@@ -143,7 +143,8 @@ class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
                       "-i", self.server.sdp_filepath,
                       "-f", "s16le", "-ac", "1", "-ar", "48k", "-i", f"udp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
                       "-map", "0:v", "-map", "1:a",
-                      "-c:v", "copy", "-c:a", "copy",
+                      "-c:v", "copy",
+                      "-c:a", "libopus", "-b:a", "64k",
                       "-f", "matroska", "-"]
         logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
         subprocess.run(stream_cmd,
