@@ -17,7 +17,7 @@ make fake_ambient
 make
 cd ..
 # run ./occ -h to get command line usage help
-./occ.py -a alsa:hw:2 -s v4l2:/dev/video0 -v debug
+./occ.py -a 'alsa:sysdefault:CARD=C615' -s v4l2:/dev/video0 -v debug
 ```
 
 ### Requirements

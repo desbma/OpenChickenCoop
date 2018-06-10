@@ -30,11 +30,15 @@ def parse_video_device(s):
   return vtype, dev
 
 
-class SilenceDetectionThread(threading.Thread):
+class NoiseDetectionThread(threading.Thread):
 
-  def __init__(self, capture_process, *args, **kwargs):
+  def __init__(self, capture_process, noise_name, db_limit, profile_path, *args, **kwargs):
     self.capture_process = capture_process
-    self.logger = logging.getLogger(self.__class__.__name__)
+    self.noise_name = noise_name
+    self.db_limit = db_limit
+    self.profile_path = profile_path
+
+    self.logger = logging.getLogger(f"{noise_name} noise detection")
     super().__init__(*args, **kwargs)
 
   def run(self):
@@ -45,33 +49,33 @@ class SilenceDetectionThread(threading.Thread):
       # TODO tune audio silence threshold
       silence_detection_cmd = ["ffmpeg", "-hide_banner", "-nostats",
                                "-f", "flac", "-i", "-",
-                               "-filter:a", "silencedetect=noise=-10dB:duration=1",
+                               "-filter:a", f"silencedetect=noise={self.db_limit}dB:duration=1",
                                "-f", "null", "/dev/null"]
-      self.logger.debug(f"Running FFmpeg silence detection with: {subprocess.list2cmdline(silence_detection_cmd)}")
-      silence_detection_process = subprocess.Popen(silence_detection_cmd,
-                                                   stdin=self.capture_process.stdout,
-                                                   stdout=subprocess.DEVNULL,
-                                                   stderr=subprocess.PIPE,
-                                                   universal_newlines=True)
+      self.logger.debug(f"Running FFmpeg {self.noise_name} noise detection with: {subprocess.list2cmdline(silence_detection_cmd)}")
+      noise_detection_process = subprocess.Popen(silence_detection_cmd,
+                                                 stdin=self.capture_process.stdout,
+                                                 stdout=subprocess.DEVNULL,
+                                                 stderr=subprocess.PIPE,
+                                                 universal_newlines=True)
 
-      # parse silence detection output
+      # parse ffmpeg output
       pending_line = ""
-      while silence_detection_process.poll() is None:
+      while noise_detection_process.poll() is None:
         try:
-          silence_detection_process.wait(timeout=0.1)
+          noise_detection_process.wait(timeout=0.1)
         except subprocess.TimeoutExpired:
           pass
 
-        new_output = self.readNonBlocking(silence_detection_process.stderr)
+        new_output = self.readNonBlocking(noise_detection_process.stderr)
         for new_line in new_output.splitlines(keepends=True):
           pending_line = pending_line + new_line
           if pending_line.endswith("\n"):
             if pending_line.startswith("[silencedetect"):
               self.logger.debug(pending_line.strip())
               if "silence_start" in pending_line:
-                self.logger.info("Silence -> noise")
+                self.logger.info(f"silence -> {self.noise_name} noise ")
               elif "silence_end" in pending_line:
-                self.logger.info("Noise -> silence")
+                self.logger.info(f"{self.noise_name} noise -> silence")
             pending_line = ""
 
     except Exception as e:
@@ -142,10 +146,10 @@ if __name__ == "__main__":
                  "-muxdelay", "0.1",
                  "-f", "mpegts", "udp://localhost:1234",
                  "-f", "flac", "-"]
-  logging.getLogger("Capture").debug(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
+  logging.getLogger("capture").debug(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
   capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
-  # silence detection thread
-  sd_thread = SilenceDetectionThread(capture_process)
-  sd_thread.start()
-  sd_thread.join()
+  # noise detection thread
+  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "bzz")
+  nd_thread.start()
+  nd_thread.join()
