@@ -6,11 +6,16 @@ import argparse
 import logging
 import selectors
 import shlex
+import socketserver
 import subprocess
 import sys
 import threading
 
 import colored_logging
+
+
+LOCAL_UDP_PORT = 10001
+STREAMING_SERVER_PORT = 11000
 
 
 def parse_audio_device(s):
@@ -35,7 +40,7 @@ class NoiseDetectionThread(threading.Thread):
 
   """ Thread to detect noise/silence in input audio stream. """
 
-  def __init__(self, capture_process, noise_name, db_limit, profile_path, on_noise_command, *args, **kwargs):
+  def __init__(self, *, capture_process, noise_name, db_limit, profile_path, on_noise_command):
     self.capture_process = capture_process
     self.noise_name = noise_name
     self.db_limit = db_limit
@@ -44,7 +49,7 @@ class NoiseDetectionThread(threading.Thread):
 
     self.logger = logging.getLogger(f"{noise_name} noise detection")
 
-    super().__init__(*args, daemon=True, **kwargs)
+    super().__init__(daemon=True, name=__class__.__name__)
 
   def run(self):
     try:
@@ -118,6 +123,53 @@ class NoiseDetectionThread(threading.Thread):
     return "".join(r)
 
 
+class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
+
+  """ Streaming server request handler. """
+
+  def handle(self):
+    logger = logging.getLogger("streaming server")
+
+    logger.info(f"Got request from {self.client_address}")
+    stream_cmd = ["ffmpeg", "-loglevel", "quiet",
+                  "-f", "mpegts", "-i", f"udp://127.0.0.1:{LOCAL_UDP_PORT}",
+                  "-map", "v", "-c:v", "copy",
+                  "-map", "a", "-c:a", "copy",
+                  "-f", "mpegts", "-"]
+    logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
+    subprocess.run(stream_cmd,
+                   stdout=self.wfile,  # connect stdout to TCP socket
+                   stderr=subprocess.DEVNULL,
+                   check=True)
+
+
+class StreamingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+
+  """ Streaming server. """
+
+  allow_reuse_address = True
+
+  def __init__(self):
+    super().__init__(("0.0.0.0", STREAMING_SERVER_PORT), StreamingServerRequestHandler)
+
+
+class StreamingServerThread(threading.Thread):
+
+  """ Streaming server thread. """
+
+  def __init__(self, server):
+    self.server = server
+
+    self.logger = logging.getLogger("streaming server")
+
+    super().__init__(daemon=True, name=__class__.__name__)
+
+  def run(self):
+    self.logger.info(f"TCP server started, serving on port {STREAMING_SERVER_PORT}, connect to it with 'ffplay -f mpegts tcp://IP:{STREAMING_SERVER_PORT}'")
+
+    self.server.serve_forever()
+
+
 if __name__ == "__main__":
   # parse args
   arg_parser = argparse.ArgumentParser(description=__doc__,
@@ -154,10 +206,10 @@ if __name__ == "__main__":
                    "debug": logging.DEBUG}
   logging.getLogger().setLevel(logging_level[args.verbosity])
   if sys.stderr.isatty():
-    logging_formatter = colored_logging.ColoredFormatter(fmt="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    logging_formatter = colored_logging.ColoredFormatter(fmt="%(asctime)s %(levelname)s %(threadName)s [%(name)s] %(message)s")
   else:
     # assume systemd service in 'simple' mode
-    logging_formatter = logging.Formatter(fmt="%(levelname)s [%(name)s] %(message)s")
+    logging_formatter = logging.Formatter(fmt="%(levelname)s %(threadName)s [%(name)s] %(message)s")
   logging_handler = logging.StreamHandler()
   logging_handler.setFormatter(logging_formatter)
   logging.getLogger().addHandler(logging_handler)
@@ -168,24 +220,36 @@ if __name__ == "__main__":
   # TODO don't hardcode audio encoding parameters
   # TODO don't hardcode video encoding parameters
   # TODO optional hqdn3d filter
-  capture_cmd = ["ffmpeg", "-hide_banner", "-loglevel", "quiet",
+  # TODO capture to 2 rtp streams (with 2 dsp files) without transcoding + remux on tcp server to get rid of mpegts constraints?
+  logger = logging.getLogger("capture")
+  capture_cmd = ["ffmpeg", "-loglevel", "quiet",
                  "-re",
                  "-f", args.video_source[0], "-i", args.video_source[1],
                  "-f", args.audio_source[0], "-ac", "1", "-i", args.audio_source[1],
                  "-map", "0:v", "-c:v", "libxvid", "-qscale:v", "4",
                  "-map", "1:a", "-c:a", "libfdk_aac", "-q:a", "4",
                  "-muxdelay", "0.1",
-                 "-f", "mpegts", "udp://localhost:1234",
+                 "-f", "mpegts", f"udp://127.0.0.1:{LOCAL_UDP_PORT}",
                  "-c:a", "copy",
                  "-f", "wav", "-"]
-  logging.getLogger("capture").info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
+  logger.info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
   capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
   assert(capture_process.poll() is None)
 
+  # streaming server thread
+  streaming_server = StreamingServer()
+  streaming_server_thread = StreamingServerThread(streaming_server)
+  streaming_server_thread.start()
+
   # noise detection thread
-  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "sounds/ambient_profile", args.noise_command)
+  nd_thread = NoiseDetectionThread(capture_process=capture_process,
+                                   noise_name="chicken",
+                                   db_limit=-10,
+                                   profile_path="sounds/ambient_profile",
+                                   on_noise_command=args.noise_command)
   nd_thread.start()
   try:
     nd_thread.join()
   except KeyboardInterrupt:
+    logger.warning("Catched SIGINT, existing")
     pass

@@ -2,7 +2,7 @@
 
 ## General status
 
-* streams video + audio over UDP
+* streams video + audio over TCP
 * basic silence/noise detection
 
 ## `spawn_detect`
@@ -44,13 +44,12 @@ Sample output:
 
 ### Requirements
 
-* [Python 3](https://www.python.org/)
+* [Python >=3.5](https://www.python.org/)
 * [SoX](http://sox.sourceforge.net/)
 * [FFmpeg](https://www.ffmpeg.org/), compiled with and `--enable-libfdk-aac` and `--enable-libxvid`.
 
 ### TODO
 
-* tcp streaming server (local udp->remote tcp)
 * systemd service
 * video filters
 * audio filters
