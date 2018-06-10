@@ -33,6 +33,8 @@ def parse_video_device(s):
 
 class NoiseDetectionThread(threading.Thread):
 
+  """ Thread to detect noise/silence in input audio stream. """
+
   def __init__(self, capture_process, noise_name, db_limit, profile_path, on_noise_command, *args, **kwargs):
     self.capture_process = capture_process
     self.noise_name = noise_name
@@ -87,7 +89,7 @@ class NoiseDetectionThread(threading.Thread):
             if pending_line.startswith("[silencedetect"):
               self.logger.debug(pending_line.strip())
               if "silence_start" in pending_line:
-                self.logger.info(f"silence -> {self.noise_name} noise ")
+                self.logger.info(f"silence -> {self.noise_name} noise")
                 self.noiseAction()
               elif "silence_end" in pending_line:
                 self.logger.info(f"{self.noise_name} noise -> silence")
@@ -97,12 +99,14 @@ class NoiseDetectionThread(threading.Thread):
       self.logger.error(f"{e.__class__.__qualname__}: {e}")
 
   def noiseAction(self):
+    """ Called on noise detected, run user command. """
     if self.on_noise_command is not None:
       # TODO pass time as env var
       self.logger.info(f"Running user command: {subprocess.list2cmdline(self.on_noise_command)}")
       subprocess.call(self.on_noise_command, stdin=subprocess.DEVNULL)
 
   def readNonBlocking(self, file):
+    """ Read data from a file descriptor without blocking, return data or None. """
     r = []
     poller = selectors.DefaultSelector()
     poller.register(file, selectors.EVENT_READ)
