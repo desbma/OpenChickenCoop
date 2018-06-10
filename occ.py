@@ -135,17 +135,27 @@ class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
     logger = logging.getLogger("streaming server")
 
     logger.info(f"Got request from {self.client_address}")
-    stream_cmd = ["ffmpeg", "-loglevel", "quiet",
-                  "-protocol_whitelist", "file,rtp,udp",
-                  "-i", self.server.sdp_filepath,
-                  "-map", "v", "-map", "a",
-                  "-c:v", "copy", "-c:a", "copy",
-                  "-f", "matroska", "-"]
-    logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
-    subprocess.run(stream_cmd,
-                   stdout=self.wfile,  # connect stdout to TCP socket
-                   stderr=subprocess.DEVNULL,
-                   check=True)
+    got_sem = self.server.connection_sem.acquire(blocking=False)
+    if got_sem:
+      try:
+        stream_cmd = ["ffmpeg", "-loglevel", "quiet",
+                      "-protocol_whitelist", "file,rtp,udp",
+                      "-i", self.server.sdp_filepath,
+                      "-map", "v", "-map", "a",
+                      "-c:v", "copy", "-c:a", "copy",
+                      "-f", "matroska", "-"]
+        logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
+        subprocess.run(stream_cmd,
+                       stdout=self.wfile,  # connect stdout to TCP socket
+                       stderr=subprocess.DEVNULL,
+                       check=True)
+      except subprocess.CalledProcessError as e:
+        # peer probably disconnected
+        logger.warning(f"Command '{subprocess.list2cmdline(stream_cmd)}' returned {e.returncode}")
+      finally:
+        self.server.connection_sem.release()
+    else:
+      logger.warning("A client is already connected, dropping this connection")
 
 
 class StreamingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -156,6 +166,7 @@ class StreamingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
   def __init__(self, sdp_filepath):
     self.sdp_filepath = sdp_filepath
+    self.connection_sem = threading.BoundedSemaphore(value=1)
     super().__init__(("0.0.0.0", STREAMING_SERVER_PORT), StreamingServerRequestHandler)
 
 
