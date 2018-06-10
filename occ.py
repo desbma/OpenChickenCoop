@@ -138,6 +138,7 @@ class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
     got_sem = self.server.connection_sem.acquire(blocking=False)
     if got_sem:
       try:
+        # TODO don't hardcode audio encoding parameters
         stream_cmd = ["ffmpeg", "-loglevel", "quiet",
                       "-protocol_whitelist", "file,rtp,udp",
                       "-i", self.server.sdp_filepath,
@@ -237,14 +238,13 @@ if __name__ == "__main__":
     # ffmpeg capture
     # TODO don't hardcode audio input parameters (ie. channel count)
     # TODO don't hardcode video input parameters (ie. res, fps...)
-    # TODO don't hardcode audio encoding parameters
     # TODO don't hardcode video encoding parameters
     # TODO optional hqdn3d filter
     logger = logging.getLogger("capture")
     sdp_filepath = os.path.join(tmp_dir, "av.sdp")
     capture_cmd = ["ffmpeg", "-loglevel", "quiet",
                    "-re",
-                   "-f", args.video_source[0], "-input_format", "mjpeg", "-i", args.video_source[1],
+                   "-f", args.video_source[0], "-video_size", "640x480", "-framerate", "30", "-pixel_format", "yuv422p", "-i", args.video_source[1],
                    "-f", args.audio_source[0], "-ar", "48k", "-ac", "1", "-i", args.audio_source[1],
                    "-sdp_file", sdp_filepath,
                    # unfortunately, mpegts or rtp can not transport raw video reliably, so we have to transcode video early
