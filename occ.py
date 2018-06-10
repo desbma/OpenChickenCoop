@@ -141,7 +141,8 @@ class StreamingServerRequestHandler(socketserver.StreamRequestHandler):
         stream_cmd = ["ffmpeg", "-loglevel", "quiet",
                       "-protocol_whitelist", "file,rtp,udp",
                       "-i", self.server.sdp_filepath,
-                      "-map", "v", "-map", "a",
+                      "-f", "s16le", "-ac", "1", "-ar", "48k", "-i", f"udp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
+                      "-map", "0:v", "-map", "1:a",
                       "-c:v", "copy", "-c:a", "copy",
                       "-f", "matroska", "-"]
         logger.info(f"Running FFmpeg streaming process with: {subprocess.list2cmdline(stream_cmd)}")
@@ -243,10 +244,10 @@ if __name__ == "__main__":
     capture_cmd = ["ffmpeg", "-loglevel", "quiet",
                    "-re",
                    "-f", args.video_source[0], "-input_format", "mjpeg", "-i", args.video_source[1],
-                   "-f", args.audio_source[0], "-ac", "1", "-i", args.audio_source[1],
+                   "-f", args.audio_source[0], "-ar", "48k", "-ac", "1", "-i", args.audio_source[1],
                    "-sdp_file", sdp_filepath,
                    "-map", "0:v", "-c:v", "libxvid", "-qscale", "4", "-f", "rtp", f"rtp://127.0.0.1:{LOCAL_UDP_PORT_VIDEO}",
-                   "-map", "1:a", "-c:a", "libopus", "-b:a", "64k", "-f", "rtp", f"rtp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
+                   "-map", "1:a", "-c:a", "pcm_s16le", "-f", "s16le", f"udp://127.0.0.1:{LOCAL_UDP_PORT_AUDIO}",
                    "-map", "1:a", "-c:a", "copy", "-f", "wav", "-"]
     logger.info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
     capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
