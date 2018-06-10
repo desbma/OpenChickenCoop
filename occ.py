@@ -39,24 +39,36 @@ class NoiseDetectionThread(threading.Thread):
     self.profile_path = profile_path
 
     self.logger = logging.getLogger(f"{noise_name} noise detection")
+
     super().__init__(*args, **kwargs)
 
   def run(self):
     try:
-      # TODO insert sox noisered process + more filtering
+      # sox noise filtering
+      sox_cmd = ["sox", "-q",
+                 "-t", "wav", "-",
+                 "-t", "wav", "-",
+                 "noisered", self.profile_path, "0.3"]
+      self.logger.info(f"Running SoX ambient noise filtering with: {subprocess.list2cmdline(sox_cmd)}")
+      noise_filtering_process = subprocess.Popen(sox_cmd,
+                                                 stdin=self.capture_process.stdout,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.PIPE)
+      assert(noise_filtering_process.poll() is None)
 
       # ffmpeg silence detection
       # TODO tune audio silence threshold
-      silence_detection_cmd = ["ffmpeg", "-hide_banner", "-nostats",
-                               "-f", "flac", "-i", "-",
-                               "-filter:a", f"silencedetect=noise={self.db_limit}dB:duration=1",
-                               "-f", "null", "/dev/null"]
-      self.logger.debug(f"Running FFmpeg {self.noise_name} noise detection with: {subprocess.list2cmdline(silence_detection_cmd)}")
-      noise_detection_process = subprocess.Popen(silence_detection_cmd,
-                                                 stdin=self.capture_process.stdout,
+      noise_detection_cmd = ["ffmpeg", "-hide_banner", "-nostats",
+                             "-f", "wav", "-i", "-",
+                             "-filter:a", f"silencedetect=noise={self.db_limit}dB:duration=1",
+                             "-f", "null", "/dev/null"]
+      self.logger.info(f"Running FFmpeg {self.noise_name} noise detection with: {subprocess.list2cmdline(noise_detection_cmd)}")
+      noise_detection_process = subprocess.Popen(noise_detection_cmd,
+                                                 stdin=noise_filtering_process.stdout,
                                                  stdout=subprocess.DEVNULL,
                                                  stderr=subprocess.PIPE,
                                                  universal_newlines=True)
+      assert(noise_detection_process.poll() is None)
 
       # parse ffmpeg output
       pending_line = ""
@@ -134,9 +146,11 @@ if __name__ == "__main__":
   logging.getLogger().addHandler(logging_handler)
 
   # ffmpeg capture
-  # TODO don't hardcode input channel count
+  # TODO don't hardcode audio input parameters (ie. channel count)
+  # TODO don't hardcode video input parameters (ie. res, fps...)
+  # TODO don't hardcode audio encoding parameters
+  # TODO don't hardcode video encoding parameters
   # TODO optional hqdn3d filter
-  # TODO option video storage with rotation
   capture_cmd = ["ffmpeg", "-hide_banner", "-loglevel", "quiet",
                  "-re",
                  "-f", args.video_source[0], "-i", args.video_source[1],
@@ -145,11 +159,13 @@ if __name__ == "__main__":
                  "-map", "1:a", "-c:a", "libfdk_aac", "-q:a", "4",
                  "-muxdelay", "0.1",
                  "-f", "mpegts", "udp://localhost:1234",
-                 "-f", "flac", "-"]
-  logging.getLogger("capture").debug(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
+                 "-c:a", "copy",
+                 "-f", "wav", "-"]
+  logging.getLogger("capture").info(f"Running FFmpeg capture process with: {subprocess.list2cmdline(capture_cmd)}")
   capture_process = subprocess.Popen(capture_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+  assert(capture_process.poll() is None)
 
   # noise detection thread
-  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "bzz")
+  nd_thread = NoiseDetectionThread(capture_process, "chicken", -10, "sounds/ambient_profile")
   nd_thread.start()
   nd_thread.join()
