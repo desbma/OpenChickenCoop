@@ -49,3 +49,29 @@ Sample output:
 * video filters
 * audio filters
 * AUR package
+
+
+## Target hardware
+
+Galaxy S7 Edge (SM-G935F)
+
+Reason for choice: I have one with a broken screen, so not worth much on the aftermarket.
+
+Pros:
++ IP68
++ powerful 8 cores CPU
++ good battery
++ good camera
++ hardware video encoding & decoding
+
+Cons:
+- no official LineageOS ROM for now
+
+### Steps to prepare
+
+1. Factory wipe
+2. Install Google Play
+3. Uninstall/disable all other ~~crap~~apps that can be
+4. Do a full Android + Apps update
+5. Install [Linux Deploy](https://play.google.com/store/apps/details?id=ru.meefik.linuxdeploy&hl=en)
+6. Root phone **TODO**
